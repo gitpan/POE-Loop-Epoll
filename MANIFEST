@@ -1,0 +1,23 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+lib/POE/Loop/Epoll.pm
+mylib/TestSetup.pm
+test.pl
+tests/epoll/comp_tcp.pm
+tests/epoll/k_alarms.pm
+tests/epoll/k_aliases.pm
+tests/epoll/k_detach.pm
+tests/epoll/k_selects.pm
+tests/epoll/k_signals.pm
+tests/epoll/ses_nfa.pm
+tests/epoll/ses_session.pm
+tests/epoll/wheel_accept.pm
+tests/epoll/wheel_run.pm
+tests/epoll/wheel_sf_ipv6.pm
+tests/epoll/wheel_sf_tcp.pm
+tests/epoll/wheel_sf_udp.pm
+tests/epoll/wheel_sf_unix.pm
+tests/epoll/wheel_tail.pm
+META.yml                                 Module meta-data (added by MakeMaker)

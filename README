@@ -1,0 +1,34 @@
+NAME
+    POE::Loop::Epoll - a bridge that supports epoll from POE
+
+SYNOPSIS
+    See POE::Loop.
+
+DESCRIPTION
+    This class is an implementation of the abstract POE::Loop interface. It
+    follows POE::Loop's public interface exactly. Therefore, please see
+    POE::Loop for its documentation.
+
+LIMITATIONS
+    epoll is Linux specific. It only works on Linux versions greater than
+    2.5.44.
+
+BUGS
+    This module make break everything. It probably hasn't been adequately
+    tested. You have been warned.
+
+    If it's been some significant period of time (I'll let you decide what
+    "significant period of time" means) since this module was uploaded,
+    everything is probably fine. Or I've been hit by a bus.
+
+SEE ALSO
+    POE, POE::Loop, epoll(2), epoll_create(2), epoll_ctl(2), epoll_wait(2)
+
+AUTHORS & LICENSING
+    This module was cleaned up by Paul Visscher. It was heavily based on
+    code written by Brad Fitzpatrick. The test code was borrowed from the
+    POE test suite and modified to test POE::Loop::Epoll.
+
+    Please see POE for more information about authors, contributors, and
+    POE's licensing.
+
