@@ -1,12 +1,11 @@
 #!/usr/bin/perl -w
-# $Id: wheel_sf_ipv6.pm,v 1.2 2004/11/22 00:13:53 rcaputo Exp $
+# $Id: wheel_sf_ipv6.pm 1820 2005-06-30 03:37:47Z rcaputo $
 
 # Exercises Client and Server TCP components, which exercise
 # SocketFactory in AF_INET6 mode.
 
 use strict;
 use lib qw(./mylib ../mylib ../lib ./lib);
-use TestSetup;
 use Socket;
 
 BEGIN {
@@ -15,6 +14,9 @@ BEGIN {
   eval 'use Socket6';
   if ( length($@) or not exists($INC{"Socket6.pm"}) ) {
     $error = "Socket6 is needed for IPv6 tests";
+  }
+  elsif ($^O eq "cygwin") {
+    $error = "IPv6 is not available on Cygwin, even if Socket6 is installed";
   }
   else {
     my $addr = Socket6::inet_pton(&Socket6::AF_INET6, "::1");
@@ -28,6 +30,8 @@ BEGIN {
     }
   }
 
+  # Not Test::More, because I'm pretty sure skip_all calls Perl's
+  # regular exit().
   if ($error) {
     print "1..0 # Skip $error\n";
     CORE::exit();
@@ -38,22 +42,15 @@ sub POE::Kernel::ASSERT_DEFAULT () { 1 }
 sub POE::Kernel::TRACE_DEFAULT  () { 1 }
 sub POE::Kernel::TRACE_FILENAME () { "./test-output.err" }
 
-use POE qw( Loop::Epoll  Component::Client::TCP Component::Server::TCP );
+use POE qw( Component::Client::TCP Component::Server::TCP );
 
 my $tcp_server_port = 31909;
 
 # Congratulations! We made it this far!
-test_setup(6);
-ok_if(6, defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
-ok(1);
-
-warn(
-  "\n",
-  "***\n",
-  "*** This test may hang if your firewall blocks IPv6\n",
-  "*** packets across your localhost interface.\n",
-  "***\n",
-);
+use Test::More tests => 4;
+use_ok("POE::Loop::Epoll");
+diag( "This test may hang if your firewall blocks IPv6" );
+diag( "packets across your localhost interface." );
 
 ###############################################################################
 # Start the TCP server.
@@ -91,15 +88,17 @@ sub server_got_flush {
 
 sub server_got_disconnect {
   my $heap = $_[HEAP];
-  ok_if(2, $heap->{put_count} == $heap->{flush_count});
+  ok(
+    $heap->{put_count} == $heap->{flush_count},
+    "server put_count matches flush_count"
+  );
 }
 
 sub server_got_error {
   my ($syscall, $errno, $error) = @_[ARG0..ARG2];
-  ok(
-    2,
-    "skipped: AF_INET6 probably not supported ($syscall error $errno: $error)"
-  );
+  SKIP: {
+    skip "AF_INET6 probably not supported ($syscall error $errno: $error)", 1
+  }
 }
 
 ###############################################################################
@@ -132,7 +131,10 @@ sub client_got_input {
     $heap->{server}->put( '2: ' . $line );
   }
   elsif ($line =~ s/^2: //) {
-    &ok_if(3, $line eq 'this is a test');
+    ok(
+      $line eq "this is a test",
+      "received input"
+    );
     $kernel->post(server => "shutdown");
     $kernel->yield("shutdown");
   }
@@ -144,26 +146,21 @@ sub client_got_flush {
 
 sub client_got_disconnect {
   my $heap = $_[HEAP];
-  ok_if(4, $heap->{put_count} == $heap->{flush_count});
+  ok(
+    $heap->{put_count} == $heap->{flush_count},
+    "client put_count matches flush_count"
+  );
 }
 
 sub client_got_connect_error {
   my ($syscall, $errno, $error) = @_[ARG0..ARG2];
-  ok(
-    3,
-    "skipped: AF_INET6 probably not supported ($syscall error $errno: $error)"
-  );
-  ok(
-    4,
-    "skipped: AF_INET6 probably not supported ($syscall error $errno: $error)"
-  );
+  SKIP: {
+    skip "AF_INET6 probably not supported ($syscall error $errno: $error)", 2;
+  }
 }
 
 ### main loop
 
-$poe_kernel->run();
-
-ok(5);
-results;
+POE::Kernel->run();
 
 1;

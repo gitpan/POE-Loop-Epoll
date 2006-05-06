@@ -5,6 +5,7 @@ README
 lib/POE/Loop/Epoll.pm
 mylib/TestSetup.pm
 test.pl
+tests/epoll/comp_tcp_concurrent.pm
 tests/epoll/comp_tcp.pm
 tests/epoll/k_alarms.pm
 tests/epoll/k_aliases.pm

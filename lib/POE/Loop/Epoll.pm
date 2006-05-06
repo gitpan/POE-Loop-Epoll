@@ -1,7 +1,7 @@
 # Empty package to appease perl.
 package POE::Loop::Epoll;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 # Include common signal handling.
 use POE::Loop::PerlSignals;
@@ -21,6 +21,8 @@ BEGIN {
 
 }
 sub MINIMUM_EPOLL_TIMEOUT () { 0 }
+#sub TRACE_EVENTS () { 0 }
+#sub TRACE_FILES () { 0 }
 
 use Errno qw(EINPROGRESS EWOULDBLOCK EINTR);
 
@@ -30,76 +32,7 @@ my $start_time = $^T;
 my %epoll_fd_masks;
 my $epfd = undef;
 
-# for epoll definitions:
-our $HAVE_SYSCALL_PH = eval {
-    require 'syscall.ph'; 1
-} || eval {
-    require 'sys/syscall.ph'; 1
-};
-
-# Explicitly define the poll constants, as either one set or the other
-# won't be loaded. They're also badly implemented in IO::Epoll:
-# The IO::Epoll module is buggy in that it doesn't export constants
-# efficiently (at least as of 0.01), so doing constants ourselves saves
-# 13% of the user CPU time.
-
-use constant EPOLLIN       => 1;
-use constant EPOLLOUT      => 4;
-use constant EPOLLERR      => 8;
-use constant EPOLLHUP      => 16;
-use constant EPOLLRDBAND   => 128;
-use constant EPOLL_CTL_ADD => 1;
-use constant EPOLL_CTL_DEL => 2;
-use constant EPOLL_CTL_MOD => 3;
-
-# linux-ix86 defaults
-our $SYS_epoll_create = eval { &SYS_epoll_create } || 254; 
-our $SYS_epoll_ctl = eval { &SYS_epoll_ctl } || 255;
-our $SYS_epoll_wait = eval { &SYS_epoll_wait } || 256;
-
-# args: size
-sub epoll_create {
-    my $epfd = eval { syscall($SYS_epoll_create, $_[0]) };
-    return -1 if $@;
-    return $epfd;
-}
-
-# ARGS: (epfd, op, fd, events)
-sub epoll_ctl {
-    syscall(
-            $SYS_epoll_ctl,
-            $_[0]+0,            # epfd
-            $_[1]+0,            # operation
-            $_[2]+0,            # fd
-            pack("LLL", $_[3], $_[2]) # events
-           );
-}
-
-# ARGS: (epfd, maxevents, timeout, arrayref)
-#  arrayref: values modified to be [$fd, $event]
-our $epoll_wait_events;
-our $epoll_wait_size = 0;
-
-sub epoll_wait {
-    # resize our static buffer if requested size is bigger than we've ever done
-    if ($_[1] > $epoll_wait_size) {
-        $epoll_wait_size = $_[1];
-        $epoll_wait_events = pack("LLL") x $epoll_wait_size;
-    }
-    my $ct = syscall($SYS_epoll_wait,
-                     $_[0]+0,
-                     $epoll_wait_events,
-                     $_[1]+0,
-                     $_[2]+0);
-
-    for ($_ = 0; $_ < $ct; $_++) {
-        @{$_[3]->[$_]}[1,0] = unpack("LL",
-                                     substr($epoll_wait_events, 12*$_, 8)
-                                    );
-    }
-
-    return $ct;
-}
+use Sys::Syscall qw(:epoll);
 
 #------------------------------------------------------------------------------
 # Loop construction and destruction.
@@ -109,7 +42,9 @@ sub loop_initialize {
     %epoll_fd_masks = ();
 
     # create an epoll fd "dimensioned for _size_ descriptors". The size
-    # isn't a maximum, it's just a hint to the kernel.
+    # isn't a maximum, it's just a hint to the kernel.  (and in newest
+    # 2.6 kernels, I believe it's entirely ignored now, since they
+    # switched from a hashtable to a tree....)
     $epfd = epoll_create(100);
     die "No Epoll support" if $epfd < 0;
 }
@@ -157,15 +92,15 @@ sub loop_watch_filehandle {
     my $current = $epoll_fd_masks{$fileno} || 0;
     my $new = $current | $type;
 
-    #   if (TRACE_FILES) {
-    #     POE::Kernel::_warn(
-    #       sprintf(
-    #         "<fh> Watch $fileno: " .
-    #         "Current mask: 0x%02X - including 0x%02X = 0x%02X\n",
-    #         $current, $type, $new
-    #       )
-    #     );
-    #   }
+    if (TRACE_FILES) {
+        POE::Kernel::_warn(
+                           sprintf(
+                                   "<fh> Watch $fileno: " .
+                                   "Current mask: 0x%02X - including 0x%02X = 0x%02X\n",
+                                   $current, $type, $new
+                                  )
+                          );
+    }
 
     if ($epoll_fd_masks{$fileno}) {
         epoll_ctl($epfd, EPOLL_CTL_MOD, $fileno, $new);
@@ -190,15 +125,15 @@ sub loop_ignore_filehandle {
     my $current = $epoll_fd_masks{$fileno} || 0;
     my $new = $current & ~$type;
 
-    #   if (TRACE_FILES) {
-    #     POE::Kernel::_warn(
-    #       sprintf(
-    #         "<fh> Ignore $fileno: " .
-    #         ": Current mask: 0x%02X - removing 0x%02X = 0x%02X\n",
-    #         $current, $type, $new
-    #       )
-    #     );
-    #   }
+      if (TRACE_FILES) {
+        POE::Kernel::_warn(
+          sprintf(
+            "<fh> Ignore $fileno: " .
+            ": Current mask: 0x%02X - removing 0x%02X = 0x%02X\n",
+            $current, $type, $new
+          )
+        );
+      }
 
     if ($epoll_fd_masks{$fileno}) {
         if ($new) {
@@ -304,7 +239,7 @@ sub loop_do_timeslice {
                 @rd and $self->_data_handle_enqueue_ready(MODE_RD, @rd);
                 @wr and $self->_data_handle_enqueue_ready(MODE_WR, @wr);
                 @ex and $self->_data_handle_enqueue_ready(MODE_EX, @ex);
-                            
+
             }
         }
 
@@ -377,8 +312,10 @@ L<POE>, L<POE::Loop>, L<epoll(2)>, L<epoll_create(2)>, L<epoll_ctl(2)>, L<epoll_
 =head1 AUTHORS & LICENSING
 
 This module was cleaned up by Paul Visscher. It was heavily based on
-code written by Brad Fitzpatrick. The test code was borrowed from the
-POE test suite and modified to test POE::Loop::Epoll.
+code written by Brad Fitzpatrick.  Brad later came and ripped out all
+the ugly code and replaced it with his clean and portable Sys::Syscall
+module.  The test code was borrowed from the POE test suite and
+modified to test POE::Loop::Epoll.
 
 Please see L<POE> for more information about authors, contributors,
 and POE's licensing.

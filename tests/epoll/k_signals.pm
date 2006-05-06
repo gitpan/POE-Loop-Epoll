@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-# $Id: k_signals.pm,v 1.3 2004/11/22 00:13:53 rcaputo Exp $
+# $Id: k_signals.pm 1770 2005-04-18 06:34:52Z rcaputo $
 
 # Tests various signals using POE's stock signal handlers.  These are
 # plain Perl signals, so mileage may vary.
@@ -31,11 +31,12 @@ BEGIN {
     CORE::exit();
   }
 
-  plan tests => 8;
+  plan tests => 9;
 }
 
-use POE qw(Loop::Epoll);
-ok(defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
+BEGIN { use_ok("POE") }
+BEGIN { use_ok("POE::Loop::Epoll"); }
+
 # This is the number of processes to fork.  Increase this number if
 # your system can handle the resource use.  Also try increasing it if
 # you suspect a problem with POE's SIGCHLD handling.  Be warned
@@ -165,33 +166,33 @@ POE::Session->create(
 # case here.
 
 sub spawn_server {
-  POE::Session->new(
-    _start => sub {
-      $_[KERNEL]->alias_set("server");
+  POE::Session->create(
+    inline_states => {
+      _start => sub {
+        $_[KERNEL]->alias_set("server");
+      },
+      do_thing => sub {
+        $_[KERNEL]->post($_[SENDER], thing_done => $_[ARG0]);
+      },
+      _child  => sub { 0 },
+      _stop   => sub { 0 },
     },
-    do_thing => sub {
-      $_[KERNEL]->post($_[SENDER], thing_done => $_[ARG0]);
-    },
-    _child  => sub { 0 },
-    _stop   => sub { 0 },
   );
 }
 
-POE::Session->new(
-  _start => sub {
-    spawn_server();
-    $_[KERNEL]->post(server => do_thing => 1);
+POE::Session->create(
+  inline_states => {
+    _start => sub {
+      spawn_server();
+      $_[KERNEL]->post(server => do_thing => 1);
+    },
+    thing_done => sub { 0 },
+    _child  => sub { 0 },
+    _stop   => sub { 0 },
   },
-  thing_done => sub { 0 },
-  _child  => sub { 0 },
-  _stop   => sub { 0 },
 );
 
-# Run the tests.
-
-POE::Kernel->run();
-
-# Now run some more tests!
+# See how SIGPIPE gets handled.
 
 POE::Session->create(
   inline_states => {
@@ -218,6 +219,8 @@ POE::Session->create(
     },
   },
 );
+
+# Run the tests.
 
 POE::Kernel->run();
 

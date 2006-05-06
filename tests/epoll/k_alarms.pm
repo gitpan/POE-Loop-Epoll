@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-# $Id: k_alarms.pm,v 1.1 2004/09/04 22:50:39 rcaputo Exp $
+# $Id: k_alarms.pm 1928 2006-04-06 14:57:17Z rcaputo $
 
 # Tests alarms.
 
@@ -7,14 +7,14 @@ use strict;
 
 use lib qw(./mylib ./lib);
 
-use Test::More tests => 37;
+use Test::More tests => 38;
 
 sub POE::Kernel::ASSERT_DEFAULT () { 1 }
 sub POE::Kernel::TRACE_DEFAULT  () { 1 }
 sub POE::Kernel::TRACE_FILENAME () { "./test-output.err" }
 
-use POE qw(Loop::Epoll);
-ok(defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
+BEGIN { use_ok("POE") }
+BEGIN { use_ok("POE::Loop::Epoll"); }
 # Test the ID-based alarm API.  Start several test paths.  Each path
 # exercises 
 
@@ -162,9 +162,10 @@ sub test_stop {
   ok($heap->{test}->{path_nine}  == 11, "mixed delay APIs rang properly");
   ok($heap->{test}->{path_ten}   == 1,  "stopped delay should not ring");
 
-  # Here's where we check the overall run time.  Increased to 5s for
-  # extremely slow, overtaxed machines like my NT test platform.
-  ok(time() - $heap->{start_time} <= 5, "tests ran reasonably fast");
+  # Here's where we check the overall run time.  Increased to 15s for
+  # extremely slow, overtaxed machines like my XP system running under
+  # Virtual PC.
+  ok(time() - $heap->{start_time} <= 15, "tests ran reasonably fast");
 
   # And test alarm order.
   ok(

@@ -1,11 +1,11 @@
 #!/usr/bin/perl -w
-# $Id: k_aliases.pm,v 1.1 2004/09/04 22:50:39 rcaputo Exp $
+# $Id: k_aliases.pm 1618 2004-09-04 22:50:40Z rcaputo $
 
 # Tests basic session aliases.
 
 use strict;
 
-use Test::More tests => 20;
+use Test::More tests => 21;
 
 sub POE::Kernel::ASSERT_DEFAULT () { 1 }
 sub POE::Kernel::TRACE_DEFAULT  () { 1 }
@@ -13,8 +13,9 @@ sub POE::Kernel::TRACE_FILENAME () { "./test-output.err" }
 
 use POSIX qw (:errno_h);
 
-use POE qw(Loop::Epoll);
-ok(defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
+BEGIN { use_ok("POE"); }
+BEGIN { use_ok("POE::Loop::Epoll"); }
+
 ### Define a simple state machine.
 
 sub machine_start {

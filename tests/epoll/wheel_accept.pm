@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-# $Id: wheel_accept.pm,v 1.1 2004/09/04 22:50:39 rcaputo Exp $
+# $Id: wheel_accept.pm 1813 2005-06-28 06:18:21Z rcaputo $
 
 # Exercises the ListenAccept wheel.
 
@@ -7,19 +7,19 @@ use strict;
 use lib qw(./mylib ../mylib ../lib ./lib);
 use IO::Socket;
 
-use TestSetup qw(ok not_ok ok_if results test_setup many_not_ok);
-
 sub POE::Kernel::ASSERT_DEFAULT () { 1 }
 sub POE::Kernel::TRACE_DEFAULT  () { 1 }
 sub POE::Kernel::TRACE_FILENAME () { "./test-output.err" }
 
-use POE qw( Loop::Epoll Wheel::ListenAccept Wheel::SocketFactory);
+use Test::More tests => 3;
+use POE qw(Wheel::ListenAccept Wheel::SocketFactory);
+use_ok("POE::Loop::Epoll");
+unless (-f "run_network_tests") {
+  plan skip_all => "Network access (and permission) required to run this test";
+}
 
-test_setup(0, "Network access (and permission) required to run this test")
-  unless -f 'run_network_tests';
 
-&test_setup(5);
-ok_if(5, defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
+
 ### A listening session.
 sub listener_start {
   my $heap = $_[HEAP];
@@ -32,11 +32,11 @@ sub listener_start {
   );
 
   if (defined $listening_socket) {
-    &ok(2);
+    pass("created listening socket");
   }
   else {
-    &not_ok(2);
-    &not_ok(3);
+    fail("created listening socket");
+    fail("listening socket accepted connections");
     return;
   }
 
@@ -56,7 +56,10 @@ sub listener_start {
 }
 
 sub listener_stop {
-  &ok_if(3, $_[HEAP]->{accept_count} == 5);
+  ok(
+    $_[HEAP]->{accept_count} == 5,
+    "listening socket accepted connections"
+  );
 }
 
 sub listener_got_connection {
@@ -92,8 +95,6 @@ sub connector_got_error {
 
 ### Main loop.
 
-&ok(1);
-
 POE::Session->create(
   inline_states => {
     _start         => \&listener_start,
@@ -115,8 +116,5 @@ for (my $connector_count=0; $connector_count < 5; $connector_count++) {
 }
 
 $poe_kernel->run();
-
-&ok(4);
-&results();
 
 1;

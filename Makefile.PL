@@ -15,7 +15,7 @@ if ($@ or $epfd < 0) {
 }
 
 my $prompt = qq|
-POE's test suite requires a functional network.
+POE\'s test suite requires a functional network.
 However, we can skip those tests requiring network
 access if you would like.
 
@@ -45,7 +45,10 @@ if($ret =~ /^Y$/i) {
 WriteMakefile(
     NAME              => 'POE::Loop::Epoll',
     VERSION_FROM      => 'lib/POE/Loop/Epoll.pm', # finds $VERSION
-    PREREQ_PM         => { POE => 0.29 }, # e.g., Module::Name => 1.1
+    PREREQ_PM         => {
+        POE => 0.29,
+        'Sys::Syscall' => 0.21,
+    },
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/POE/Loop/Epoll.pm', # retrieve abstract from module
        AUTHOR         => 'Paul Visscher <paulv@canonical.org>') : ()),

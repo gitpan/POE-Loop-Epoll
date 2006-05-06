@@ -1,25 +1,30 @@
 #!/usr/bin/perl -w
-# $Id: wheel_tail.pm,v 1.1 2004/09/04 22:50:39 rcaputo Exp $
+# $Id: wheel_tail.pm 1925 2006-04-05 15:05:45Z rcaputo $
 
 # Exercises Wheel::FollowTail, Wheel::ReadWrite, and Filter::Block.
 # -><- Needs tests for Seek and SeekBack.
 
 use strict;
-use lib qw(./mylib ../mylib ../lib ./lib ./paulv);
+use lib qw(./mylib ../mylib ../lib ./lib);
 use Socket;
-
-use TestSetup;
 
 sub POE::Kernel::ASSERT_DEFAULT () { 1 }
 sub POE::Kernel::TRACE_DEFAULT  () { 1 }
 sub POE::Kernel::TRACE_FILENAME () { "./test-output.err" }
 
-test_setup(0, "Network access (and permission) required to run this test")
-  unless -f 'run_network_tests';
+use Test::More;
 
-test_setup(10);
+unless (-f "run_network_tests") {
+  plan skip_all => "Network access (and permission) required to run this test";
+}
 
-use POE qw( Loop::Epoll 
+if ($^O eq "cygwin") {
+  plan skip_all => "Cygwin file open/locking semantics thwart this test.";
+}
+
+plan tests => 11;
+
+use POE qw(
   Component::Server::TCP
   Wheel::FollowTail
   Wheel::ReadWrite
@@ -28,14 +33,12 @@ use POE qw( Loop::Epoll
   Filter::Block
   Driver::SysRW
 );
-ok_if(10, defined($INC{'POE/Loop/Epoll.pm'}) == 1, "loaded Epoll.pm");
+use_ok("POE::Loop::Epoll");
+
 sub DEBUG () { 0 }
 
 my $tcp_server_port = 31909;
 my $max_send_count  = 10;    # expected to be even
-
-# Congratulations! We made it this far!
-&ok(1);
 
 ###############################################################################
 # A generic server session.
@@ -48,7 +51,10 @@ sub sss_new {
       _stop       => \&sss_stop,
       got_error   => \&sss_error,
       got_block   => \&sss_block,
-      ev_timeout  => sub { delete $_[HEAP]->{wheel} },
+      ev_timeout  => sub {
+        DEBUG and warn "=== sss got timeout";
+        delete $_[HEAP]->{wheel};
+      },
     },
     args => [ $socket, $peer_addr, $peer_port ],
   );
@@ -79,23 +85,28 @@ sub sss_start {
 
 sub sss_block {
   my ($kernel, $heap, $block) = @_[KERNEL, HEAP, ARG0];
-  DEBUG and warn "sss got block";
+  DEBUG and warn "=== sss got block";
   $heap->{read_count}++;
-  $kernel->delay( ev_timeout => 5 );
+  $kernel->delay( ev_timeout => 10 );
 }
 
 sub sss_error {
   my ($heap, $syscall, $errnum, $errstr, $wheel_id) = @_[HEAP, ARG0..ARG3];
-  DEBUG and warn "sss got $syscall error $errnum: $errstr";
+  DEBUG and warn "=== sss got $syscall error $errnum: $errstr";
   if ($errnum) {
     $_[HEAP]->{test_two} = 0;
   }
 }
 
 sub sss_stop {
-  DEBUG and warn "sss stopped";
-  &ok_if(2, $_[HEAP]->{test_two});
-  &ok_if(3, $_[HEAP]->{read_count} == $max_send_count);
+  my $heap = $_[HEAP];
+  DEBUG and warn "=== sss stopped";
+  ok($heap->{test_two}, "test two");
+  ok(
+    $heap->{read_count} == $max_send_count,
+    "read everything we were sent " .
+    "did($heap->{read_count}) wanted($max_send_count)"
+  );
 }
 
 ###############################################################################
@@ -104,7 +115,7 @@ sub sss_stop {
 sub client_tcp_start {
   my $heap = $_[HEAP];
 
-  DEBUG and warn "client tcp started";
+  DEBUG and warn "=== client tcp started";
 
   $heap->{wheel} = POE::Wheel::SocketFactory->new(
     RemoteAddress  => '127.0.0.1',
@@ -124,10 +135,25 @@ sub client_tcp_start {
 }
 
 sub client_tcp_stop {
-  &ok_if(4, $_[HEAP]->{test_three});
-  &ok_if(5, $_[HEAP]->{put_count} == $max_send_count);
-  &ok_if(6, $_[HEAP]->{flush_count} == $_[HEAP]->{put_count} / 2);
-  &ok_if(7, $_[HEAP]->{test_six});
+  my $heap =$_[HEAP];
+  ok(
+    $heap->{test_three},
+    "test three"
+  );
+  ok(
+    $heap->{put_count} == $max_send_count,
+    "sent everything we should"
+  );
+
+  my $sent_count = $_[HEAP]->{put_count} / 2;
+  ok(
+    $heap->{flush_count} == $sent_count,
+    "flushed what we sent (flush=$heap->{flush_count}; sent=$sent_count)"
+  );
+  ok(
+    $heap->{test_six},
+    "test six"
+  );
 }
 
 sub client_tcp_connected {
@@ -142,7 +168,7 @@ sub client_tcp_connected {
     FlushedEvent => 'got_flush_nonexistent',
   );
 
-  DEBUG and warn "client tcp connected";
+  DEBUG and warn "=== client tcp connected";
 
   # Test event changing.
   $heap->{wheel}->event(
@@ -162,12 +188,13 @@ sub client_tcp_connected {
 sub client_tcp_got_alarm {
   my ($kernel, $heap, $line) = @_[KERNEL, HEAP, ARG0];
 
-  DEBUG and warn "client tcp got alarm";
+  DEBUG and warn "=== client tcp got alarm";
 
   $heap->{wheel}->put( '0123456789ABCDEF0123456789ABCDEF' );
 
   $heap->{put_count} += 2;
   if ($heap->{put_count} < $max_send_count) {
+    # Delay is 1 for slow hardware.
     $kernel->delay( got_alarm => 1 );
   }
 }
@@ -189,7 +216,7 @@ sub client_tcp_got_error {
 
 sub client_tcp_got_flush {
   $_[HEAP]->{flush_count}++;
-  DEBUG and warn "client_tcp_got_flush";
+  DEBUG and warn "=== client_tcp_got_flush";
   # Delays destruction until all data is out.
   delete $_[HEAP]->{wheel} if $_[HEAP]->{put_count} >= $max_send_count;
 }
@@ -207,10 +234,10 @@ POE::Component::Server::TCP->new(
 
     my ($port, $addr) = sockaddr_in($sockname);
     $addr = inet_ntoa($addr);
-    &ok_if(
-      8,
-      ($addr eq '0.0.0.0') &&
-      ($port == $tcp_server_port)
+
+    ok(
+      ($addr eq '0.0.0.0') && ($port == $tcp_server_port),
+      "received connection"
     );
   },
 );
@@ -226,11 +253,77 @@ POE::Session->create(
   }
 );
 
+### Test a file that appears and disappears.
+
+POE::Session->create(
+  inline_states => {
+    _start => sub {
+      my ($kernel, $heap) = @_[KERNEL, HEAP];
+
+      unlink "./test-tail-file";
+      $heap->{wheel} = POE::Wheel::FollowTail->new(
+        Filename => "./test-tail-file",
+        InputEvent => "got_input",
+        ErrorEvent => "got_error",
+        ResetEvent => "got_reset",
+  PollInterval => 0.1,
+      );
+      $kernel->delay(create_file => 1);
+      $heap->{sent_count}  = 0;
+      $heap->{recv_count}  = 0;
+      $heap->{reset_count} = 0;
+      DEBUG and warn "=== start";
+    },
+
+    create_file => sub {
+      open(FH, ">./test-tail-file") or die $!;
+      print FH "moo\015\012";
+      close FH;
+      DEBUG and warn "=== create";
+      $_[HEAP]->{sent_count}++;
+    },
+
+    got_input => sub {
+      my ($kernel, $heap) = @_[KERNEL, HEAP];
+      $heap->{recv_count}++;
+
+      DEBUG and warn "=== input";
+
+      unlink "./test-tail-file";
+
+      if ($heap->{recv_count} == 1) {
+        $kernel->delay(create_file => 1);
+        return;
+      }
+
+      delete $heap->{wheel};
+    },
+
+    got_error => sub { warn "error"; die },
+
+    got_reset => sub {
+      DEBUG and warn "=== reset";
+      $_[HEAP]->{reset_count}++;
+    },
+
+    _stop => sub {
+      DEBUG and warn "=== stop";
+      my $heap = $_[HEAP];
+      ok(
+        ($heap->{sent_count} == $heap->{recv_count}) &&
+        ($heap->{sent_count} == 2),
+        "sent and received everything we should " .
+        "sent($heap->{sent_count}) recv($heap->{recv_count}) wanted(2)"
+      );
+      ok($heap->{reset_count} > 0, "reset more than once");
+    },
+  },
+);
+
 ### main loop
 
-$poe_kernel->run();
+POE::Kernel->run();
 
-&ok(9);
-&results;
+pass("run() returned successfully");
 
 1;

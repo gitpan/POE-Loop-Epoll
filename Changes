@@ -1,5 +1,9 @@
 Revision history for Perl extension POE::Loop::Epoll.
 
+0.02  Sat May  6 01:30:32 EDT 2006
+    - Patches from Brad Fitzpatrick to use Sys::Syscall.
+    - Resync the test suite from POE svn
+
 0.01  Thu Mar 17 13:18:05 2005
 	- original version; created by h2xs 1.23 with options
 		-AXn POE::Loop::Epoll
